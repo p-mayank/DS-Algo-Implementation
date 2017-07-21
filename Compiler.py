@@ -5,7 +5,7 @@ operators = ['+', '-', '*', '/']
 code = ""
 
 class CompoundStatement:
-    def __init__(self, code_base):
+    def __init__(self, code_base, local_var=None):
         self.string = code_base
         self.list = code_base.split('\n')
         #   self.list.remove(' ')
@@ -20,21 +20,24 @@ class CompoundStatement:
         k=0
         #print('k')
         #print(len(self.list))
-        
+        self.local_var = local_var
         #print(len(self.list))
         while(k<len(self.list)):
-
-            parse = LineParser(self.list[k].split(';')[0], k, code_base)
+            parse = LineParser(self.list[k].split(';')[0], k, code_base, local_var)
             k += parse.counter
             #print(k)
 
 class LineParser:
-    def __init__(self, codesegment, k,code_base):
+    def __init__(self, codesegment, k,code_base, local_var=None):
         self.line = codesegment
         self.code_base = code_base
         self.line = self.line.strip()
         self.counter=0
         self.k = k
+        self.local_var = local_var
+        self.fl=0
+        if(type(local_var) is dict):
+            self.fl = 1
         self.check()
 
     def check(self):
@@ -53,10 +56,17 @@ class LineParser:
         self.line = self.line.split(':=')
         newtemp = self.line[0].strip()
         if(newtemp in var):
-            var[newtemp] = Expression.eval_exp(self.line[1].strip())
+            var[newtemp] = Expression.eval_exp(self.line[1].strip(), self.local_var)
         else:
-            newdict = {newtemp:Expression.eval_exp(self.line[1].strip())}
-            var.update(newdict)
+            if(self.fl):
+                if(newtemp in self.local_var):
+                    self.local_var[newtemp] = Expression.eval_exp(self.line[1].strip(), self.local_var)
+                else:   
+                    newdict = {newtemp:Expression.eval_exp(self.line[1].strip(), self.local_var)}
+                    self.local_var.update(newdict)
+            else:    
+                newdict = {newtemp:Expression.eval_exp(self.line[1].strip(), self.local_var)}
+                var.update(newdict)
 
     def print(self):
         self.line = self.line.split('print')
@@ -66,7 +76,7 @@ class LineParser:
             if(newtemp.count(op)>0):
                 flag=1
         if(flag==0):
-            ktemp = checkVar.find(newtemp)
+            ktemp = checkVar.find(newtemp, self.local_var)
             if(ktemp=='Error!!'):
                 print(newtemp)
             else:
@@ -100,26 +110,28 @@ class LineParser:
         last_fi = fi_tuple[counter - 1][0]
 
         n_tuple = [(m.start(0), m.end(0)) for m in re.finditer('\n', block[:last_fi])]
+        
         #print(len(n_tuple))
+        
         else_tuple = [(m.start(0), m.end(0)) for m in re.finditer('else', block[:last_fi])]
         increment_line = len(n_tuple) + 1
         #print(self.counter)
         self.counter += increment_line
         #print(self.counter)
         #print(newtemp)
-        if(ConditionalExpression.eval_exp(newtemp)):
+        if(ConditionalExpression.eval_exp(newtemp, self.local_var)):
             lowerlimit = else_tuple[counter-1][0]-1
             #print(block[:lowerlimit])
             upperlimit = block[:lowerlimit].split('\n')
             #print('\n'.join(upperlimit[1:]))
             upperlimit = '\n'.join(upperlimit[1:])
             #print(upperlimit)
-            CompoundStatement(upperlimit)
+            CompoundStatement(upperlimit, self.local_var)
         else:
             lowerlimit = fi_tuple[counter-1][0]-1
             upperlimit = block[else_tuple[counter-1][1]:lowerlimit].split('\n')
             upperlimit = '\n'.join(upperlimit[1:])
-            CompoundStatement(upperlimit)
+            CompoundStatement(upperlimit, self.local_var)
 
 
     def buildloop(self):
@@ -127,15 +139,15 @@ class LineParser:
         newtemp = self.line[1].strip()
         self.line = newtemp.split('do')
         newtemp = self.line[0].strip()
-        print(newtemp)
+        #print(newtemp)
         codetemp = self.code_base.split('\n')
-        print(codetemp)
+        #print(codetemp)
         block = '\n'.join(codetemp[self.k:])
-        print(block)
+        #print(block)
         while_tuple = [(m.start(0), m.end(0)) for m in re.finditer('while', block)]
-        print(while_tuple)
+        #print(while_tuple)
         done_tuple = [(m.start(0), m.end(0)) for m in re.finditer('done', block)]
-        print(done_tuple)
+        #print(done_tuple)
         first_done = done_tuple[0][0]
         counter = 0
         for ele in while_tuple:
@@ -143,30 +155,34 @@ class LineParser:
             if (ele[0] > first_done):
                 counter-=1
                 break
-        print(counter)        
+        #print(counter)        
         last_done = done_tuple[counter - 1][0]
         n_tuple = [(m.start(0), m.end(0)) for m in re.finditer('\n', block[:last_done])]
         increment_line = len(n_tuple) + 1
         self.counter += increment_line
-        while(ConditionalExpression.eval_exp(newtemp)):
+        local_vari={}
+        if(type(self.local_var) is dict):
+            local_vari.update(self.local_var)
+        while(ConditionalExpression.eval_exp(newtemp, self.local_var)):
             lowerlimit = last_done -1
             upperlimit = block[:lowerlimit].split('\n')
             upperlimit = '\n'.join(upperlimit[1:])
-            CompoundStatement(upperlimit)
+            CompoundStatement(upperlimit, local_var=local_vari)
+        local_vari={}
 
 
 class Expression:
-    def eval_exp(codeline):
+    def eval_exp(codeline, local_var):
         if(codeline.count('-')>0):
-            return SubstExp.eval_exp(codeline)
+            return SubstExp.eval_exp(codeline,local_var)
         elif(codeline.count('+')>0):
-            return AddExp.eval_exp(codeline)
+            return AddExp.eval_exp(codeline,local_var)
         elif(codeline.count('*')>0):
-            return MultExp.eval_exp(codeline)
+            return MultExp.eval_exp(codeline,local_var)
         elif(codeline.count('/')>0):
-            return DivExp.eval_exp(codeline)
+            return DivExp.eval_exp(codeline,local_var)
         else:
-            decide = checkVar.find(codeline)
+            decide = checkVar.find(codeline, local_var)
             if(decide == 'Error!!'):
                 print('Error in assignment operation(s)')
                 exit()
@@ -174,19 +190,19 @@ class Expression:
                 return decide
 
 class ConditionalExpression:
-    def eval_exp(codeline):
+    def eval_exp(codeline, local_var):
         if(codeline.count('>')):
-            return GreaterExp.eval_exp(codeline)
+            return GreaterExp.eval_exp(codeline, local_var)
         elif(codeline.count('<')):
-            return LesserExp.eval_exp(codeline)
+            return LesserExp.eval_exp(codeline,local_var)
         elif(codeline.count('==')):
-            return EqualExp.eval_exp(codeline)
+            return EqualExp.eval_exp(codeline,local_var)
         elif(codeline.count('!=')):
-            return NotEqualExp.eval_exp(codeline)
+            return NotEqualExp.eval_exp(codeline,local_var)
         else:
             if(codeline=='1'):
                 return 1
-            decide = checkVar.find(codeline)
+            decide = checkVar.find(codeline, local_var)
             if(decide=='Error!!'):
                 print('Error in conditional expression(s)')
                 exit()
@@ -194,21 +210,21 @@ class ConditionalExpression:
                 return codeline
 
 class GreaterExp:
-    def eval_exp(codeline):
+    def eval_exp(codeline, local_var):
         codeline = codeline.split('>')
-        leftexp = Expression.eval_exp(codeline[0].strip())
-        rightexp = Expression.eval_exp(codeline[1].strip())
+        leftexp = Expression.eval_exp(codeline[0].strip(),local_var)
+        rightexp = Expression.eval_exp(codeline[1].strip(),local_var)
         if(leftexp>rightexp):
             return 1
         else:
             return 0
 
 class LesserExp:
-    def eval_exp(codeline):
+    def eval_exp(codeline,local_var):
         codeline = codeline.split('<')
-        leftexp = Expression.eval_exp(codeline[0].strip())
+        leftexp = Expression.eval_exp(codeline[0].strip(),local_var)
         #print(leftexp)
-        rightexp = Expression.eval_exp(codeline[1].strip())
+        rightexp = Expression.eval_exp(codeline[1].strip(),local_var)
         #print(rightexp)
         if(leftexp<rightexp):
             return 1
@@ -216,20 +232,20 @@ class LesserExp:
             return 0
 
 class EqualExp:
-    def eval_exp(codeline):
+    def eval_exp(codeline,local_var):
         codeline = codeline.split('==')
-        leftexp = Expression.eval_exp(codeline[0].strip())
-        rightexp = Expression.eval_exp(codeline[1].strip())
+        leftexp = Expression.eval_exp(codeline[0].strip(),local_var)
+        rightexp = Expression.eval_exp(codeline[1].strip(),local_var)
         if(leftexp==rightexp):
             return 1
         else:
             return 0
 
 class NotEqualExp:
-    def eval_exp(codeline):
+    def eval_exp(codeline,local_var):
         codeline = codeline.split('!=')
-        leftexp = Expression.eval_exp(codeline[0].strip())
-        rightexp = Expression.eval_exp(codeline[1].strip())
+        leftexp = Expression.eval_exp(codeline[0].strip(),local_var)
+        rightexp = Expression.eval_exp(codeline[1].strip(),local_var)
         if(leftexp!=rightexp):
             return 1
         else:
@@ -237,40 +253,42 @@ class NotEqualExp:
 
 
 class SubstExp:
-    def eval_exp(codeline):
+    def eval_exp(codeline,local_var):
         codeline = codeline.split('-')
-        leftexp = Expression.eval_exp(codeline[0].strip())
-        rightexp = Expression.eval_exp(codeline[1].strip())
+        leftexp = Expression.eval_exp(codeline[0].strip(),local_var)
+        rightexp = Expression.eval_exp(codeline[1].strip(),local_var)
         return leftexp - rightexp
 
 class AddExp:
-    def eval_exp(codeline):
+    def eval_exp(codeline,local_var):
         codeline = codeline.split('+')
-        leftexp = Expression.eval_exp(codeline[0].strip())
-        rightexp = Expression.eval_exp(codeline[1].strip())
+        leftexp = Expression.eval_exp(codeline[0].strip(),local_var)
+        rightexp = Expression.eval_exp(codeline[1].strip(),local_var)
         return rightexp + leftexp
 
 class MultExp:
-    def eval_exp(codeline):
+    def eval_exp(codeline,local_var):
         codeline = codeline.split('*')
-        leftexp = Expression.eval_exp(codeline[0].strip())
-        rightexp = Expression.eval_exp(codeline[1].strip())
+        leftexp = Expression.eval_exp(codeline[0].strip(),local_var)
+        rightexp = Expression.eval_exp(codeline[1].strip(),local_var)
         return rightexp*leftexp
 
 class DivExp:
-    def eval_exp(codeline):
+    def eval_exp(codeline,local_var):
         codeline = codeline.split('/')
-        leftexp = Expression.eval_exp(codeline[0].strip())
-        rightexp = Expression.eval_exp(codeline[1].strip())
+        leftexp = Expression.eval_exp(codeline[0].strip(),local_var)
+        rightexp = Expression.eval_exp(codeline[1].strip(),local_var)
         return leftexp/rightexp
 
 
 class checkVar:
-    def find(codeline):
+    def find(codeline, local_var):
         if(codeline.isdigit()):
             return int(codeline)
         elif(codeline in var):
             return int(var[codeline])
+        elif(local_var and codeline in local_var):
+            return int(local_var[codeline])
         else:
             return 'Error!!'
 
